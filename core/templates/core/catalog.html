@@ -1,0 +1,558 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WB Cashback</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        /* ОСНОВНЫЕ ПЕРЕМЕННЫЕ */
+        :root { 
+            --primary: #6c5ce7; 
+            --bg: #ffffff; 
+            --gray-bg: #f4f4f7; 
+            --text-main: #000000; 
+            --green: #22c55e; 
+            --green-light: #f0fdf4; 
+            --status-wait-bg: #fff7ed; --status-wait-text: #c2410c; 
+            --status-ok-bg: #f0fdf4; --status-ok-text: #15803d; 
+            --status-bad-bg: #fef2f2; --status-bad-text: #b91c1c; 
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, sans-serif; 
+            background: var(--bg); margin: 0; padding-bottom: 100px; color: var(--text-main); 
+            -webkit-tap-highlight-color: transparent; user-select: none; 
+        }
+        ::-webkit-scrollbar { display: none; }
+
+        /* СЕТКА И КАРТОЧКИ */
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 15px; }
+        .card { background: var(--bg); border: 1px solid #f0f0f0; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+        .card.disabled { opacity: 0.6; pointer-events: none; filter: grayscale(1); }
+        .badge-bought { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; }
+        .card-img-wrap { width: 100%; height: 160px; background: var(--gray-bg); display: flex; align-items: center; justify-content: center; }
+        .card img { width: 100%; height: 100%; object-fit: cover; }
+        .card-body { padding: 10px; flex-grow: 1; display: flex; flex-direction: column; }
+        
+        /* ЦЕНЫ */
+        .price-row { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+        .price { font-weight: 800; font-size: 17px; color: var(--text-main); }
+        .old-price { 
+            text-decoration: line-through; 
+            color: #999; 
+            font-size: 13px; 
+            font-weight: 400;
+        }
+
+        .product-name { font-size: 13px; line-height: 1.3; margin: 5px 0 10px; color: #333; height: 34px; overflow: hidden; }
+
+        /* КНОПКИ */
+        .btn-add { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-top: auto; width: 100%; cursor: pointer; transition: 0.2s; }
+        .btn-add:active { transform: scale(0.98); opacity: 0.9; }
+        .btn-counter { display: flex; justify-content: space-between; align-items: center; background: rgba(108, 92, 231, 0.12); color: var(--primary); padding: 6px 5px; border-radius: 8px; margin-top: auto; width: 100%; box-sizing: border-box; }
+        .counter-action { background: transparent; border: none; color: var(--primary); font-size: 20px; font-weight: 500; width: 35px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+        .counter-val { font-weight: 700; font-size: 15px; color: var(--primary); }
+        .plus-disabled { color: rgba(108, 92, 231, 0.3); cursor: default; }
+
+        /* КНОПКИ В ПРОФИЛЕ */
+        .btn-sec { background: #f4f4f7; color: #333; width: 100%; padding: 16px; border-radius: 16px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .btn-sec:active { background: #e0e0e0; }
+        .btn-details { background: #333; color: white; width: 100%; padding: 16px; border-radius: 16px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+
+        /* ОБЩИЕ БЛОКИ */
+        .profile-card { background: var(--gray-bg); padding: 20px; border-radius: 20px; margin: 15px; text-align: center; }
+        .balance-num { font-size: 36px; font-weight: 800; color: var(--text-main); margin: 10px 0; }
+        .order-card { background: white; padding: 15px; border-radius: 16px; margin-bottom: 12px; border: 1px solid #f0f0f0; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+        .order-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #8e8e93; }
+        .order-id { font-weight: bold; color: #333; }
+        .status-badge { display: inline-block; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; margin-top: 8px; width: 100%; text-align: center; box-sizing: border-box; }
+        .st-wait { background: var(--status-wait-bg); color: var(--status-wait-text); }
+        .st-ok { background: var(--status-ok-bg); color: var(--status-ok-text); }
+        .st-bad { background: var(--status-bad-bg); color: var(--status-bad-text); }
+
+        /* ВСПЛЫВАЮЩИЕ ОКНА (Product Popup) */
+        .product-popup { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); z-index: 2000; display: none; overflow-y: auto; animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .popup-header { display: flex; justify-content: flex-end; padding: 15px; position: absolute; width: 100%; box-sizing: border-box; z-index: 10; pointer-events: none; }
+        .popup-header button { pointer-events: auto; }
+        .close-btn { background: white; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 24px; color: #333; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        
+        /* ГАЛЕРЕЯ */
+        .popup-img-container { margin: 15px; height: 380px; background: var(--gray-bg); border-radius: 24px; overflow: hidden; position: relative; }
+        .gallery-wrapper { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; width: 100%; height: 100%; -webkit-overflow-scrolling: touch; }
+        .gallery-wrapper::-webkit-scrollbar { display: none; }
+        .popup-img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: contain; scroll-snap-align: center; mix-blend-mode: multiply; }
+        .gallery-dots { display: flex; justify-content: center; gap: 6px; margin-top: -25px; position: relative; z-index: 5; margin-bottom: 15px; }
+        .dot { width: 6px; height: 6px; background: rgba(0,0,0,0.2); border-radius: 50%; transition: 0.2s; }
+        .dot.active { background: var(--primary); transform: scale(1.2); }
+
+        .popup-body { padding: 0 20px 100px 20px; }
+        .cashback-row { background: var(--green-light); padding: 15px; border-radius: 16px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .popup-title { font-size: 20px; font-weight: 700; margin-bottom: 15px; }
+        .article-row { font-size: 13px; color: #888; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        .article-row:active { color: var(--primary); }
+        .popup-footer { position: fixed; bottom: 0; left: 0; width: 100%; padding: 15px 20px 30px; background: white; border-top: 1px solid #eee; box-sizing: border-box; z-index: 2020; }
+        .btn-main { background: var(--primary); color: white; width: 100%; padding: 16px; border-radius: 16px; font-size: 16px; font-weight: 600; border: none; cursor: pointer; box-shadow: 0 5px 20px rgba(108, 92, 231, 0.3); }
+
+        /* НАВИГАЦИЯ */
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); display: flex; justify-content: space-around; padding: 10px 0 25px; border-top: 1px solid #eee; z-index: 100; }
+        .nav-item { text-align: center; font-size: 10px; color: #aaa; }
+        .nav-item.active { color: var(--primary); }
+        .nav-item i { font-size: 22px; display: block; margin-bottom: 4px; }
+        .badge { position: absolute; top: -5px; right: 20px; background: #ff3b30; color: white; border-radius: 50%; min-width: 16px; height: 16px; font-size: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; display: none; }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); align-items: center; justify-content: center; z-index: 3000; backdrop-filter: blur(2px); }
+        .modal-content { background: white; padding: 25px; border-radius: 24px; width: 85%; max-height: 85vh; display: flex; flex-direction: column; box-sizing: border-box; }
+        
+        /* СТИЛЬ ПОЛЕЙ ВВОДА И ВЫБОРА */
+        .input-field { width: 100%; padding: 14px; background: var(--gray-bg); border: none; border-radius: 12px; margin: 10px 0; box-sizing: border-box; font-size: 16px; outline: none; appearance: none; }
+        
+        /* Стрелка для списка банков */
+        select.input-field {
+            background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%236c5ce7%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+            background-repeat: no-repeat, repeat;
+            background-position: right .7em top 50%, 0 0;
+            background-size: .65em auto, 100%;
+        }
+
+        .instruction-text { text-align: left; line-height: 1.5; font-size: 14px; color: #333; overflow-y: auto; flex-grow: 1; padding-right: 5px; }
+        .instruction-text p { margin-bottom: 12px; }
+        .instruction-text ul { padding-left: 20px; margin-bottom: 15px; }
+        .important { color: #d63031; font-weight: 700; background: #fff5f5; padding: 5px 10px; border-radius: 8px; display: inline-block; }
+    </style>
+</head>
+<body>
+
+    <div id="tab-catalog" class="tab-content active">
+        <h2 style="padding: 10px 15px 0; margin-bottom: 0;">Каталог</h2>
+        <div class="grid">
+            {% for product in products %}
+                {% if product.id in bought_ids %}
+                    <div class="card disabled">
+                        <div class="card-img-wrap">{% if product.image %} <img src="{{ product.image.url }}" loading="lazy" decoding="async"> {% endif %}<div class="badge-bought">ВЫКУПЛЕНО</div></div>
+                        <div class="card-body">
+                            <div class="product-name">{{ product.name }}</div>
+                            <button class="btn-mini" style="background:#ccc;">Уже у вас</button>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="card" onclick="openProduct(
+                        '{{ product.id }}', 
+                        '{{ product.name|escapejs }}', 
+                        '{{ product.price }}', 
+                        '{{ product.wb_price }}', 
+                        '{{ product.calculated_cashback }}', 
+                        '{{ product.description|default:'Нет описания'|escapejs }}', 
+                        '{% if product.image %}{{ product.image.url }}{% endif %}{% for i in product.images.all %},{{ i.image.url }}{% endfor %}',
+                        '{{ product.article|default:''|escapejs }}'
+                    )">
+                        <div class="card-img-wrap">{% if product.image %} <img src="{{ product.image.url }}" loading="lazy" decoding="async"> {% else %} <span style="color:#aaa">Нет фото</span> {% endif %}</div>
+                        <div class="card-body">
+                            <div class="price-row">
+                                {% if product.wb_price > 0 %}
+                                    <span class="old-price">{{ product.wb_price }} ₽</span>
+                                {% endif %}
+                                <span class="price">{{ product.price }} ₽</span>
+                            </div>
+                            
+                            <div class="product-name">{{ product.name }}</div>
+                            <div style="color:var(--green); font-size:11px; font-weight:600; margin-bottom:5px;">Кэшбэк {{ product.calculated_cashback }} ₽</div>
+                            
+                            <div id="btn-wrap-{{ product.id }}">
+                                <button class="btn-add" onclick="event.stopPropagation(); addToCart('{{ product.id }}', '{{ product.name|escapejs }}', '{{ product.price }}', '{% if product.image %}{{ product.image.url }}{% endif %}')">В корзину</button>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <div id="product-view" class="product-popup">
+        <div class="popup-header"><button class="close-btn" onclick="closeProduct()"><i class="bi bi-x-lg"></i></button></div>
+        
+        <div class="popup-img-container">
+            <div id="gallery-wrapper" class="gallery-wrapper"></div>
+        </div>
+        <div id="gallery-dots" class="gallery-dots"></div>
+
+        <div class="popup-body">
+            <div class="cashback-row">
+                <span style="font-weight:600;">Ваш кэшбэк</span>
+                <span id="p-cashback" style="font-weight:800; color:var(--green); font-size:20px;"></span>
+            </div>
+            
+            <div id="p-name" class="popup-title"></div>
+            
+            <div id="p-article-row" class="article-row" onclick="copyArticle()">
+                <i class="bi bi-clipboard"></i> <span id="p-article"></span>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items: center;">
+                <span style="color:#888;">Цена</span>
+                <div class="price-row">
+                    <span id="p-old-price" class="old-price" style="display:none;"></span>
+                    <span id="p-price" class="price"></span>
+                </div>
+            </div>
+            
+            <div style="margin-top:20px; font-weight:bold;">Описание</div>
+            <div id="p-desc" style="margin-top:5px; color:#555; white-space:pre-wrap; line-height:1.5;"></div>
+        </div>
+        <div class="popup-footer"><button id="p-btn-add" class="btn-main">В корзину</button></div>
+    </div>
+
+    <div id="tab-cart" class="tab-content">
+        <h2 style="padding: 10px 15px;">Корзина</h2>
+        <div id="cart-list" style="padding: 0 15px;"></div>
+        <div id="cart-total" style="padding:20px; display:none;"><button class="btn-main" onclick="checkout()">Оформить заказ</button></div>
+    </div>
+
+    <div id="tab-profile" class="tab-content">
+        {% if user %}
+            <div class="profile-card">
+                <div style="display:none;"><div class="balance-num">{{ user.balance }} ₽</div></div>
+                <div style="font-size:18px; font-weight:bold; margin-bottom:10px;">ID: {{ user.telegram_id }}</div>
+                <button class="btn-details" onclick="openDetails()"><i class="bi bi-credit-card"></i> Мои реквизиты</button>
+                <button class="btn-sec" onclick="openInstruction()"><i class="bi bi-book"></i> Правила и Инструкция</button>
+            </div>
+            <h3 style="padding: 0 15px;">Мои заказы</h3>
+            <div style="padding:0 15px;">
+                {% for order in orders %}
+                    <div class="order-card">
+                        <div class="order-header"><span class="order-id">Заказ #{{ order.id }}</span><span>{{ order.created_at|date:"d.m.Y" }}</span></div>
+                        <div style="margin-bottom:8px;">{{ order.product.name }}</div>
+                        {% if order.status == 'ordered' %}<div class="status-badge st-wait">⏳ Ждет фото заказа</div>
+                        {% elif order.status == 'check_wait' %}<div class="status-badge st-wait">🧾 Ждет чек</div>
+                        {% elif order.status == 'received' %}<div class="status-badge st-wait">🔍 На проверке</div>
+                        {% elif order.status == 'approved' %}<div class="status-badge st-ok">✅ Выплачено</div>
+                        {% elif order.status == 'rejected' %}<div class="status-badge st-bad">❌ Отклонено</div>
+                        {% else %}<div class="status-badge st-wait">⏳ В работе</div>{% endif %}
+                    </div>
+                {% empty %}<p style="text-align:center; color:#aaa; margin-top:30px;">История пуста</p>{% endfor %}
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('catalog', this)"><i class="bi bi-grid"></i><span>Каталог</span></div>
+        <div class="nav-item" onclick="switchTab('cart', this)" style="position:relative;"><i class="bi bi-cart"></i><span>Корзина</span><div id="cart-badge" class="badge">0</div></div>
+        <div class="nav-item" onclick="switchTab('profile', this)"><i class="bi bi-person"></i><span>Профиль</span></div>
+    </div>
+
+    <div id="detailsModal" class="modal">
+        <div class="modal-content">
+            <h3>Реквизиты для выплат</h3>
+            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Укажите карту или телефон, куда вам удобнее получать кэшбэк.</p>
+            
+            <label style="font-size:12px; font-weight:bold; color:#555; display:block; margin-bottom:5px;">Номер карты или телефона</label>
+            <input type="text" id="d_number" class="input-field" placeholder="Например: 8900..." style="margin-top:0;">
+            
+            <label style="font-size:12px; font-weight:bold; color:#555; display:block; margin-bottom:5px; margin-top:10px;">Банк получателя</label>
+            <select id="d_bank" class="input-field" style="margin-top:0;">
+                <option value="" disabled selected>Выберите банк</option>
+                <option value="Сбербанк">🟢 Сбербанк</option>
+                <option value="Т-Банк (Тинькофф)">🟡 Т-Банк (Тинькофф)</option>
+                <option value="Альфа-Банк">🔴 Альфа-Банк</option>
+                <option value="ВТБ">🔵 ВТБ</option>
+                <option value="Озон Банк">🔵 Озон Банк</option>
+                <option value="СБП (Любой)">🟣 СБП (Любой)</option>
+                <option value="Другой">⚪ Другой</option>
+            </select>
+            
+            <button class="btn-main" onclick="saveDetails()">Сохранить</button>
+            <button style="margin-top:15px; width:100%; border:none; background:transparent; color:#999;" onclick="closeDetails()">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="instructionModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-top:0;">📋 Инструкция</h3>
+            <div class="instruction-text">
+                <p><b>Здравствуйте!</b> 👋</p>
+                <p>Поиск на WB. Предложение актуально <b>2 часа</b>.</p>
+                
+                <p><b>1. Поиск:</b> Ввести в поисковую строку название товара.</p>
+                <p><b>2. Конкуренты:</b> Листаем, открываем и добавляем несколько <b>конкурентов</b>.</p>
+                <p class="important">⛔ Фильтры не используем !!!</p>
+                
+                <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+
+                <p><b>📸 ЭТАП 1 (До заказа):</b></p>
+                <ul>
+                    <li>Прислать боту скрин <b>ПОИСКА</b> (виден наш товар + запрос).</li>
+                    <li>Прислать скрин <b>КОРЗИНЫ</b>.</li>
+                </ul>
+                
+                <p><b>🛒 ЭТАП 2 (Выкуп):</b></p>
+                <ul>
+                    <li>Оформить заказ, забрать с ПВЗ, <b>не отказываться!</b></li>
+                    <li>Прислать скрин из раздела <b>"Покупки"</b> со статусом "Доставлено".</li>
+                </ul>
+
+                <p><b>⭐ ЭТАП 3 (Отзыв):</b></p>
+                <p>Оставить отзыв 5★ с <b>ФОТО</b> (видео по желанию).</p>
+                <p class="important" style="background:#fff3cd; color:#856404;">⚠️ Отзыв без фото — кэшбэк уменьшается!</p>
+                
+                <p><b>Прислать боту:</b></p>
+                <ul>
+                    <li>Скрин опубликованного отзыва <b>из раздела "Покупки" в личном кабинете</b>.</li>
+                    <li>Скрин чека с суммой.</li>
+                </ul>
+
+                <p><b>💰 Выплата:</b> через 2 недели после отзыва.</p>
+                <p style="text-align:center; margin-top:20px;"><b>Будьте прекрасны 🩷</b></p>
+            </div>
+            <button style="margin-top:10px; width:100%; border:none; background:transparent; color:#6c5ce7; font-weight:bold; padding:10px;" onclick="closeInstruction()">Понятно, закрыть</button>
+        </div>
+    </div>
+
+    <script>
+        let tg = window.Telegram.WebApp; 
+        tg.expand(); 
+        tg.headerColor = '#ffffff';
+        let cart = []; 
+        
+        // --- ВОТ ТУТ МЫ ЧИНИМ ID (НАУЧНЫЙ ПОДХОД) ---
+        // 1. Сначала пробуем встроенный метод Телеграма
+        let userId = tg.initDataUnsafe?.user?.id;
+        
+        // 2. Если он пустой (глюк или открыто в браузере), берем из URL
+        if (!userId) {
+            const urlParams = new URLSearchParams(window.location.search);
+            userId = urlParams.get('user_id');
+        }
+        
+        console.log("Scientific Check - UserID:", userId); // В консоли браузера будет видно ID
+
+        document.addEventListener("DOMContentLoaded", function() { 
+            if(userId) loadCartFromDB();
+            else renderAllButtons();
+        });
+
+        function loadCartFromDB() {
+            fetch(`/api/get-cart/?user_id=${userId}`)
+            .then(r => r.json())
+            .then(data => {
+                cart = data.cart;   
+                let details = data.payment_details || "";
+                if (details) {
+                    let parts = details.split(' || ');
+                    if (parts.length >= 1) document.getElementById('d_number').value = parts[0];
+                    if (parts.length >= 2) document.getElementById('d_bank').value = parts[1];
+                }
+                updateBadge(); renderAllButtons(); if(document.getElementById('tab-cart').classList.contains('active')) renderCart();
+            });
+        }
+
+        function syncCartWithDB(prodId, action) {
+            if (!userId) return; // Если ID нет, базу не трогаем, только локально
+            fetch('/api/update-cart/', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_id: userId, product_id: prodId, action: action })
+            });
+        }
+
+        function switchTab(id, el) {
+            document.querySelectorAll('.tab-content').forEach(d => d.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(d => d.classList.remove('active'));
+            document.getElementById('tab-' + id).classList.add('active');
+            el.classList.add('active');
+            if (id === 'cart') renderCart();
+            if (id === 'catalog') renderAllButtons();
+        }
+
+        function openProduct(id, name, price, wbPrice, cashbackSum, desc, imgString, article) {
+            document.getElementById('p-name').innerText = name;
+            document.getElementById('p-price').innerText = price + " ₽";
+            
+            let artRow = document.getElementById('p-article-row');
+            let artText = document.getElementById('p-article');
+            if (article) {
+                artText.innerText = "Арт: " + article;
+                artRow.style.display = 'flex';
+                artRow.dataset.article = article;
+            } else {
+                artRow.style.display = 'none';
+            }
+
+            let images = imgString.split(',').filter(url => url.trim() !== "");
+            let gallery = document.getElementById('gallery-wrapper');
+            let dots = document.getElementById('gallery-dots');
+            gallery.innerHTML = ""; dots.innerHTML = "";
+
+            if(images.length === 0) {
+                let img = document.createElement('img');
+                img.className = 'popup-img'; img.style.objectFit = 'contain'; img.src = ''; 
+                gallery.appendChild(img);
+            } else {
+                images.forEach((src, idx) => {
+                    let img = document.createElement('img');
+                    img.src = src; 
+                    img.className = 'popup-img';
+                    img.loading = "lazy"; 
+                    img.decoding = "async";
+                    gallery.appendChild(img);
+                    if(images.length > 1) {
+                        let dot = document.createElement('div');
+                        dot.className = 'dot' + (idx === 0 ? ' active' : '');
+                        dots.appendChild(dot);
+                    }
+                });
+            }
+            
+            gallery.onscroll = function() {
+                if(images.length <= 1) return;
+                let index = Math.round(gallery.scrollLeft / gallery.clientWidth);
+                let allDots = document.querySelectorAll('.dot');
+                allDots.forEach(d => d.classList.remove('active'));
+                if(allDots[index]) allDots[index].classList.add('active');
+            };
+
+            let oldPriceEl = document.getElementById('p-old-price');
+            if (parseInt(wbPrice) > parseInt(price)) {
+                oldPriceEl.innerText = wbPrice + " ₽";
+                oldPriceEl.style.display = 'inline';
+            } else {
+                oldPriceEl.style.display = 'none';
+            }
+
+            document.getElementById('p-cashback').innerText = cashbackSum + " ₽"; 
+            document.getElementById('p-desc').innerText = desc;
+            
+            let btn = document.getElementById('p-btn-add');
+            let inCart = cart.find(x => x.id === id);
+            let mainImg = images.length > 0 ? images[0] : '';
+            
+            if (inCart) { btn.innerText = "Уже в корзине"; btn.style.background = "rgba(108, 92, 231, 0.15)"; btn.style.color = "#6c5ce7"; btn.onclick = null; }
+            else { btn.innerText = "В корзину"; btn.style.background = "#6c5ce7"; btn.style.color = "white"; btn.onclick = function() { addToCart(id, name, price, mainImg); closeProduct(); }; }
+            document.getElementById('product-view').style.display = 'block'; tg.BackButton.show(); tg.BackButton.onClick(closeProduct);
+        }
+        
+        function copyArticle() {
+            let art = document.getElementById('p-article-row').dataset.article;
+            if (art) {
+                const el = document.createElement('textarea'); el.value = art; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el);
+                tg.HapticFeedback.notificationOccurred('success'); tg.showAlert("Артикул скопирован: " + art);
+            }
+        }
+
+        function closeProduct(){ document.getElementById('product-view').style.display='none'; tg.BackButton.hide(); renderAllButtons(); }
+        
+        function addToCart(id, name, price, img) {
+            if (cart.some(item => item.id === id)) return;
+            cart.push({id, name, price, img});
+            updateBadge(); renderButton(id, name, price, img); 
+            tg.HapticFeedback.notificationOccurred('success');
+            syncCartWithDB(id, 'add');
+        }
+
+        function removeFromCart(index) {
+            let item = cart[index];
+            cart.splice(index, 1);
+            renderCart(); updateBadge(); restoreAddButton(item.id, item.name, item.price, item.img);
+            syncCartWithDB(item.id, 'remove');
+        }
+
+        function removeFromCartBtn(id) {
+            let idx = cart.findIndex(x => x.id === id);
+            if (idx > -1) {
+                let p = cart[idx];
+                cart.splice(idx, 1);
+                updateBadge(); restoreAddButton(p.id, p.name, p.price, p.img);
+                syncCartWithDB(id, 'remove');
+            }
+        }
+
+        function renderButton(id, name, price, img) {
+            let wrap = document.getElementById(`btn-wrap-${id}`);
+            if (!wrap) return;
+            if (cart.some(x => x.id === id)) {
+                wrap.innerHTML = `<div class="btn-counter" onclick="event.stopPropagation();"><button class="counter-action" onclick="removeFromCartBtn('${id}')">−</button><span class="counter-val">1</span><button class="counter-action plus-disabled">+</button></div>`;
+            } else {
+                wrap.innerHTML = `<button class="btn-add" onclick="event.stopPropagation(); addToCart('${id}', '${name}', '${price}', '${img}')">В корзину</button>`;
+            }
+        }
+        function restoreAddButton(id, name, price, img) { renderButton(id, name, price, img); }
+        function renderAllButtons() { cart.forEach(item => { renderButton(item.id, item.name, item.price, item.img); }); }
+        function updateBadge() { let b = document.getElementById('cart-badge'); b.style.display = cart.length > 0 ? 'flex' : 'none'; b.innerText = cart.length; }
+
+        function renderCart() {
+            let c = document.getElementById('cart-list'); c.innerHTML = "";
+            if (cart.length === 0) {
+                c.innerHTML = '<div style="text-align:center; margin-top:50px; color:#aaa;"><i class="bi bi-cart-x" style="font-size:40px;"></i><p>Корзина пуста</p></div>';
+                document.getElementById('cart-total').style.display = 'none'; return;
+            }
+            cart.forEach((item, index) => {
+                c.innerHTML += `<div style="background:white; padding:10px; margin-bottom:10px; border-radius:12px; display:flex; align-items:center; border:1px solid #eee;"><img src="${item.img}" style="width:60px; height:60px; border-radius:8px; object-fit:cover; margin-right:15px;"><div style="flex-grow:1;"><div style="font-weight:600; font-size:14px;">${item.name}</div><div style="font-size:13px; color:#666;">${item.price} ₽</div></div><button onclick="removeFromCart(${index})" style="background:none; border:none; color:red; font-size:20px;"><i class="bi bi-trash"></i></button></div>`;
+            });
+            document.getElementById('cart-total').style.display = 'block';
+        }
+
+        function checkout() {
+            if (cart.length === 0) return;
+            
+            // ПРОВЕРКА ID ПЕРЕД ОТПРАВКОЙ
+            if (!userId) { 
+                tg.showAlert("Ошибка: ID не определен. Попробуйте перезайти в бота."); 
+                return; 
+            }
+            
+            let productIds = cart.map(i => i.id).join(",");
+            let btn = document.querySelector('#cart-total button');
+            let originalText = btn.innerText; btn.innerText = "Оформляем..."; btn.disabled = true;
+            
+            fetch('/api/create-order/', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, products: productIds })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    tg.showAlert("✅ Заказ успешно оформлен!");
+                    cart = []; updateBadge(); renderCart(); renderAllButtons();
+                } else { tg.showAlert("Ошибка: " + data.error); }
+            })
+            .catch(err => tg.showAlert("Ошибка сети!"))
+            .finally(() => { btn.innerText = originalText; btn.disabled = false; });
+        }
+
+        function openDetails() { document.getElementById('detailsModal').style.display = 'flex'; }
+        function closeDetails() { document.getElementById('detailsModal').style.display = 'none'; }
+        function openInstruction() { document.getElementById('instructionModal').style.display = 'flex'; }
+        function closeInstruction() { document.getElementById('instructionModal').style.display = 'none'; }
+
+        // СОХРАНЕНИЕ РЕКВИЗИТОВ (С ВЫБОРОМ БАНКА)
+        function saveDetails() { 
+            let num = document.getElementById('d_number').value.trim(); 
+            let bank = document.getElementById('d_bank').value; 
+            let btn = document.querySelector('#detailsModal .btn-main'); 
+            
+            if(num && bank) { 
+                let originalText = btn.innerText; btn.innerText = "Сохраняю..."; btn.disabled = true; 
+                let combined = num + " || " + bank; // Формат: 8900... || Сбербанк
+                
+                fetch('/api/save-details/', { 
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ user_id: userId, details: combined }) 
+                })
+                .then(r => r.json())
+                .then(data => { 
+                    if(data.ok) { tg.showAlert("✅ Реквизиты сохранены"); closeDetails(); } 
+                    else { tg.showAlert("Ошибка сохранения"); } 
+                })
+                .catch(err => tg.showAlert("Ошибка сети"))
+                .finally(() => { btn.innerText = originalText; btn.disabled = false; }); 
+            } else { 
+                tg.showAlert("Заполните номер и выберите банк!"); 
+            } 
+        }
+    </script>
+</body>
+</html>
