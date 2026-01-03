@@ -34,35 +34,56 @@ def webapp_catalog(request):
 # ... ОСТАЛЬНЫЕ ФУНКЦИИ (API) ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ КАК БЫЛИ ...
 @csrf_exempt
 def create_order_api(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            user_id = data.get('user_id')
-            product_ids_str = data.get('products')
-            if not user_id or not product_ids_str: return JsonResponse({'success': False, 'error': 'Нет данных'})
-            try: user = TelegramUser.objects.get(telegram_id=user_id)
-            except TelegramUser.DoesNotExist: return JsonResponse({'success': False, 'error': 'Пользователь не найден'})
-            p_ids = product_ids_str.split(',')
-            count = 0
-            product_names = []
-            for pid in p_ids:
-                if not pid: continue
-                product = Product.objects.filter(id=int(pid)).first()
-                if product:
-                    if not Order.objects.filter(user=user, product=product).exists():
-                        Order.objects.create(user=user, product=product, status='ordered')
-                        count += 1
-                        product_names.append(product.name)
-            if count > 0:
-                CartItem.objects.filter(user=user).delete()
-                msg_text = f"✅ <b>Заказ принят!</b> ({count} шт.)\n\n" + "\n".join([f"• {n}" for n in product_names]) + "\n\nЖдите проверки!"
-                send_telegram_message(user_id, msg_text)
-                return JsonResponse({'success': True, 'message': 'Заказ создан'})
-            else:
-                send_telegram_message(user_id, "⚠️ Эти товары уже были заказаны.")
-                return JsonResponse({'success': True, 'message': 'Дубликаты'})
-        except Exception as e: return JsonResponse({'success': False, 'error': str(e)})
-    return JsonResponse({'success': False, 'error': 'Method not allowed'})
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+    user_id = data.get('user_id')
+    product_ids_str = data.get('products')
+
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'User ID is required'}, status=400)
+    
+    if not product_ids_str:
+        return JsonResponse({'success': False, 'error': 'No products selected'}, status=400)
+
+    user = TelegramUser.objects.filter(telegram_id=user_id).first()
+    if not user:
+        return JsonResponse({'success': False, 'error': 'User not found'}, status=404)
+
+    p_ids = [pid for pid in product_ids_str.split(',') if pid] # List comprehension
+    
+    products = Product.objects.filter(id__in=p_ids)
+    
+    created_orders = []
+    product_names = []
+
+    for product in products:
+        order, created = Order.objects.get_or_create(
+            user=user, 
+            product=product, 
+            defaults={'status': 'ordered'}
+        )
+        if created:
+            created_orders.append(order)
+            product_names.append(product.name)
+
+    # 5. Результат
+    if not created_orders:
+        send_telegram_message(user_id, "⚠️ Эти товары уже были заказаны.")
+        return JsonResponse({'success': True, 'message': 'Дубликаты'})
+
+    # Очистка корзины и уведомление
+    CartItem.objects.filter(user=user).delete()
+    
+    msg_text = f"✅ <b>Заказ принят!</b> ({len(created_orders)} шт.)\n\n" + "\n".join([f"• {n}" for n in product_names]) + "\n\nЖдите проверки!"
+    send_telegram_message(user_id, msg_text)
+    
+    return JsonResponse({'success': True, 'message': 'Заказ создан'})
 
 def get_cart_api(request):
     user_id = request.GET.get('user_id')
