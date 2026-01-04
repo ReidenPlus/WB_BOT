@@ -10,20 +10,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
-# IP сервера лучше тоже вынести в .env, но пока оставим как есть
-BASE_WEBAPP_URL = "https://31.128.42.98.sslip.io/webapp/" 
+BASE_WEBAPP_URL = "*******" 
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# --- ХЕНДЛЕРЫ (ВЫНЕСЕНЫ НАРУЖУ) ---
 
 async def start_handler(message: types.Message):
     await TelegramUser.objects.aget_or_create(
         telegram_id=message.from_user.id, 
         defaults={'username': message.from_user.username}
     )
-    # Добавляем user_id в URL, чтобы HTML сразу его подхватил
     personal_url = f"{BASE_WEBAPP_URL}?user_id={message.from_user.id}"
     
     kb = ReplyKeyboardMarkup(
@@ -37,8 +34,6 @@ async def text_handler(message: types.Message):
 
     user = await TelegramUser.objects.aget(telegram_id=message.from_user.id)
     
-    # ОПТИМИЗАЦИЯ: select_related('product') загружает товар сразу.
-    # Без этого при обращении к order.product.name Django сделал бы доп. запрос.
     order = await Order.objects.filter(user=user, status='number_wait').select_related('product').alast()
     
     if order:
@@ -54,7 +49,6 @@ async def text_handler(message: types.Message):
 async def photo_handler(message: types.Message):
     user = await TelegramUser.objects.aget(telegram_id=message.from_user.id)
     
-    # Ищем активные заказы
     order_waiting_check = await Order.objects.filter(user=user, status='check_wait').alast()
     order_new = await Order.objects.filter(user=user, status='ordered').alast()
 
@@ -62,12 +56,10 @@ async def photo_handler(message: types.Message):
         await message.answer("⚠️ Нет активных заказов для загрузки фото.")
         return
 
-    # Качаем файл только если есть заказ
     file_id = message.photo[-1].file_id
     file = await bot.get_file(file_id)
 
     if order_waiting_check:
-        # Второй этап: Чек
         path = f"checks/{user.telegram_id}_{order_waiting_check.id}_check.jpg"
         full_path = os.path.join(settings.MEDIA_ROOT, path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -83,7 +75,6 @@ async def photo_handler(message: types.Message):
         )
 
     elif order_new:
-        # Первый этап: Скрин ЛК
         path = f"proofs/{user.telegram_id}_{order_new.id}.jpg"
         full_path = os.path.join(settings.MEDIA_ROOT, path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -98,7 +89,6 @@ async def photo_handler(message: types.Message):
             parse_mode="HTML"
         )
 
-# --- ОСНОВНОЙ КЛАСС КОМАНДЫ ---
 
 class Command(BaseCommand):
     help = 'Run Bot'
@@ -108,7 +98,6 @@ class Command(BaseCommand):
             print("ОШИБКА: Токен не найден в .env!")
             return
             
-        # Регистрируем хендлеры
         dp.message.register(start_handler, TelegramCommand("start"))
         dp.message.register(text_handler, F.text)
         dp.message.register(photo_handler, F.photo)
