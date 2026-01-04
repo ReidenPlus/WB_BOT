@@ -20,15 +20,12 @@ def export_to_excel(modeladmin, request, queryset):
             'Статус', 'Дата', 'Реквизиты', 'Скрин Заказа', 'Скрин Чека', 'Номер чека'
         ]
     elif queryset.model == WithdrawalRequest:
-        # ЗАГОЛОВКИ ДЛЯ ВЫВОДОВ
         headers = ['ID', 'Пользователь', 'Сумма', 'Реквизиты', 'Статус', 'Дата']
     else:
-        # Универсальные заголовки (для всего остального)
         headers = [field.name for field in modeladmin.model._meta.fields]
 
     ws.append(headers)
     
-    # Жирный шрифт для шапки
     for cell in ws[1]: 
         cell.font = Font(bold=True)
 
@@ -36,9 +33,7 @@ def export_to_excel(modeladmin, request, queryset):
         row = []
         
         if queryset.model == Order:
-            # --- СБОР ДАННЫХ ЗАКАЗА ---
             u_name = str(obj.user) if obj.user else "Нет"
-            # Реквизиты берем из профиля юзера
             details = obj.user.payment_details if obj.user and obj.user.payment_details else "Нет реквизитов"
             
             p_art = obj.product.article if obj.product else "-"
@@ -49,7 +44,6 @@ def export_to_excel(modeladmin, request, queryset):
             s1 = obj.screenshot.url if obj.screenshot else "-"
             s2 = obj.receipt_screenshot.url if obj.receipt_screenshot else "-"
             
-            # Добавляем номер чека
             check_num = obj.check_number if obj.check_number else "-"
             
             date_str = obj.created_at.strftime("%d.%m.%Y %H:%M")
@@ -60,21 +54,18 @@ def export_to_excel(modeladmin, request, queryset):
             ]
         
         elif queryset.model == WithdrawalRequest:
-            # --- СБОР ДАННЫХ ВЫВОДА ---
             row = [
                 obj.id, str(obj.user), obj.amount, obj.phone_number, 
                 obj.get_status_display(), obj.created_at.strftime("%d.%m.%Y %H:%M")
             ]
         
         else:
-            # Стандартный вывод
             for field in headers:
                 val = getattr(obj, field, "-")
                 row.append(str(val))
         
         ws.append(row)
-
-    # Авто-ширина колонок
+        
     for column_cells in ws.columns:
         length = max(len(str(cell.value) or "") for cell in column_cells)
         ws.column_dimensions[get_column_letter(column_cells[0].column)].width = length + 2
@@ -86,7 +77,6 @@ def export_to_excel(modeladmin, request, queryset):
 
 export_to_excel.short_description = "Скачать Excel отчет (.xlsx)"
 
-# --- ДЕЙСТВИЯ АРХИВАЦИИ ---
 @admin.action(description="📦 В АРХИВ (Скрыть)")
 def move_to_archive(modeladmin, request, queryset):
     queryset.update(is_archived=True)
@@ -95,7 +85,6 @@ def move_to_archive(modeladmin, request, queryset):
 def restore_from_archive(modeladmin, request, queryset):
     queryset.update(is_archived=False)
 
-# --- ИНЛАЙН ГАЛЕРЕЯ ---
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 1
@@ -108,7 +97,6 @@ class ProductAdmin(admin.ModelAdmin):
     actions = [move_to_archive, restore_from_archive]
     inlines = [ProductImageInline]
 
-    # Скрываем архивные по умолчанию
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         if 'is_archived__exact' not in request.GET:
@@ -117,7 +105,6 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    # Добавили check_number в таблицу
     list_display = ('id', 'user', 'product_info', 'status', 'calc_cashback', 'check_number', 'created_at', 'view_screens')
     list_filter = ('status', 'is_archived', 'created_at')
     search_fields = ('user__username', 'user__telegram_id', 'product__article', 'check_number')
