@@ -2,15 +2,12 @@ from django.http import HttpResponse
 import openpyxl
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
-# ВАЖНО: Импортируем модели, иначе Python не поймет, с чем сравнивать
 from .models import Order, WithdrawalRequest
 
 def export_to_excel(modeladmin, request, queryset):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Export Data"
-
-    # Проверяем, какую модель мы выгружаем
     if queryset.model == Order:
         headers = [
             'ID', 'Пользователь', 'Артикул', 'Товар', 'Цена WB', '% Кэшбэка', 
@@ -23,7 +20,6 @@ def export_to_excel(modeladmin, request, queryset):
 
     ws.append(headers)
     
-    # Жирный шрифт для шапки
     for cell in ws[1]: 
         cell.font = Font(bold=True)
 
@@ -63,7 +59,6 @@ def export_to_excel(modeladmin, request, queryset):
         
         ws.append(row)
 
-    # Авто-ширина
     for column_cells in ws.columns:
         length = max(len(str(cell.value) or "") for cell in column_cells)
         ws.column_dimensions[get_column_letter(column_cells[0].column)].width = length + 2
