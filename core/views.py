@@ -21,7 +21,6 @@ def webapp_catalog(request):
             bought_ids = list(orders.values_list('product_id', flat=True))
         except TelegramUser.DoesNotExist: pass
 
-    # ВАЖНО: Добавили prefetch_related('images') для загрузки галереи
     products = Product.objects.filter(active=True).prefetch_related('images')
     
     return render(request, 'core/catalog.html', {
@@ -31,7 +30,6 @@ def webapp_catalog(request):
         'bought_ids': bought_ids
     })
 
-# ... ОСТАЛЬНЫЕ ФУНКЦИИ (API) ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ КАК БЫЛИ ...
 @csrf_exempt
 def create_order_api(request):
     if request.method != 'POST':
@@ -55,7 +53,7 @@ def create_order_api(request):
     if not user:
         return JsonResponse({'success': False, 'error': 'User not found'}, status=404)
 
-    p_ids = [pid for pid in product_ids_str.split(',') if pid] # List comprehension
+    p_ids = [pid for pid in product_ids_str.split(',') if pid]
     
     products = Product.objects.filter(id__in=p_ids)
     
@@ -72,12 +70,10 @@ def create_order_api(request):
             created_orders.append(order)
             product_names.append(product.name)
 
-    # 5. Результат
     if not created_orders:
         send_telegram_message(user_id, "⚠️ Эти товары уже были заказаны.")
         return JsonResponse({'success': True, 'message': 'Дубликаты'})
 
-    # Очистка корзины и уведомление
     CartItem.objects.filter(user=user).delete()
     
     msg_text = f"✅ <b>Заказ принят!</b> ({len(created_orders)} шт.)\n\n" + "\n".join([f"• {n}" for n in product_names]) + "\n\nЖдите проверки!"
